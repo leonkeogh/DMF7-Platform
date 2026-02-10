@@ -1,5 +1,4 @@
 # DMF7-NextGen
-# DMF7-NextGen
 
 Next-generation DMF7 monorepo with distributed plane architecture.
 
