@@ -3,7 +3,9 @@ import neo4j, { Driver } from "neo4j-driver";
 let driver: Driver | null = null;
 
 function getDriver(): Driver {
-  if (driver) return driver;
+  if (driver) {
+    return driver;
+  }
 
   const uri = process.env.NEO4J_URI;
   const user = process.env.NEO4J_USER;
