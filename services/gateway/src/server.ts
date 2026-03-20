@@ -1,5 +1,5 @@
 import http from "http";
-import { orchestrate } from "../../execution/orchestrator/orchestrator";
+import { orchestrate } from "../../../execution/orchestrator/orchestrator";
 
 const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/execute") {
