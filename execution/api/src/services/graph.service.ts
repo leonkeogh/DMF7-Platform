@@ -21,7 +21,7 @@ function getDriver(): Driver {
 }
 
 export async function createEventNode(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ): Promise<void> {
   const drv = getDriver();
   const session = drv.session();
