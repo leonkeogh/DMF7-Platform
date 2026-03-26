@@ -83,14 +83,21 @@ async function tick() {
       output = '__execution_error__';
     }
 
-    // 3. Validate — exactly once per assign
-    const validate = await request('POST', '/engine/validate', {
-      task_id: task.id,
-      output,
-    });
+    // 3. Validate — exactly once per assign, one retry on transient failure
+    let validate;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        validate = await request('POST', '/engine/validate', { task_id: task.id, output });
+        break;
+      } catch (err) {
+        if (attempt === 2) throw err; // re-throw on second failure — caught by outer try
+        console.warn(`validate attempt ${attempt} failed for task ${task.id}: ${err.message} — retrying`);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
 
     if (validate.status === 409) {
-      // Task was already validated by another path — not an error in a multi-worker setup
+      // Task already validated by another worker — not an error in a multi-worker setup
       console.warn(`task ${task.id} already validated (409) — skipping`);
       return;
     }
@@ -99,7 +106,8 @@ async function tick() {
       return;
     }
 
-    console.log(`task ${task.id} → ${validate.body.result}`);
+    const result = validate.body && validate.body.result ? validate.body.result : 'unknown';
+    console.log(`task ${task.id} → ${result}`);
   } catch (err) {
     console.error('tick error:', err.message);
   } finally {
@@ -117,5 +125,9 @@ function shutdown() {
 
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+process.on('unhandledRejection', (reason) => {
+  console.error('unhandled rejection:', reason);
+  // Do not exit — log and allow next tick to proceed
+});
 
 console.log(`DMF7 worker polling ${API_HOST}:${API_PORT} every ${POLL_INTERVAL_MS}ms`);
