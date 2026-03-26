@@ -1,2 +1,4 @@
 node_modules/
 data/engine.db
+data/engine.db-shm
+data/engine.db-wal
