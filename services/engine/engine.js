@@ -89,7 +89,7 @@ router.post('/engine/validate', (req, res) => {
   const success = outputStr === task.expected_output;
   const status = success ? 'success' : 'failed';
   const info = db.prepare(
-    'UPDATE tasks SET status = ?, output = ?, completed_at = ? WHERE id = ?'
+    "UPDATE tasks SET status = ?, output = ?, completed_at = ? WHERE id = ? AND status = 'assigned'"
   ).run(status, outputStr, Date.now(), id);
   if (info.changes !== 1) {
     return res.status(500).json({ error: 'update did not apply' });
