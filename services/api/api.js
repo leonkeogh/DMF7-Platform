@@ -4,6 +4,7 @@ const express = require('express');
 const daemon = require('../daemon/daemon');
 const { router: engineRouter, control: engineControl } = require('../engine/engine');
 const metrics = require('../metrics/metrics');
+const rateLimiter = require('../middleware/rateLimiter');
 
 const app = express();
 app.use(express.json());
@@ -36,7 +37,7 @@ app.get('/state', (req, res) => {
 });
 
 // Protected — auth required
-app.post('/control', auth, (req, res) => {
+app.post('/control', auth, rateLimiter, (req, res) => {
   const { command } = req.body || {};
   if (!command || typeof command !== 'string') {
     return res.status(400).json({ error: 'command required' });
@@ -63,8 +64,8 @@ app.post('/control', auth, (req, res) => {
   }
 });
 
-// Protected — all /engine/* routes require auth
-app.use('/engine', auth, engineRouter);
+// Protected — all /engine/* routes require auth then rate limit
+app.use('/engine', auth, rateLimiter, engineRouter);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
