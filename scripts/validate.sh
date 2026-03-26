@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 
+# ── configurable control plane ─────────────────────────────────────────────
 API_KEY="${DMF7_API_KEY:-dev-key}"
 PORT="${PORT:-5000}"
+LOG_FILE="${LOG_FILE:-/tmp/api.log}"
+STARTUP_SIGNAL="${STARTUP_SIGNAL:-running on port}"
+HEALTH_ENDPOINT="${HEALTH_ENDPOINT:-/state}"
+TIMEOUT_START="${TIMEOUT_START:-5}"
+TIMEOUT_HEALTH="${TIMEOUT_HEALTH:-6}"
+# ───────────────────────────────────────────────────────────────────────────
+
 BASE="http://localhost:$PORT"
 PASS=0; FAIL=0
 
@@ -38,34 +46,28 @@ if lsof -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
 fi
 
 rm -f data/engine.db data/engine.db-shm data/engine.db-wal
-DMF7_API_KEY="$API_KEY" node services/api/api.js >/tmp/api.log 2>&1 &
+DMF7_API_KEY="$API_KEY" node services/api/api.js >"$LOG_FILE" 2>&1 &
 API_PID=$!
 
-# HARD GUARANTEE 2: process must emit "running on port" within 5s
-LISTENING=0
-for i in $(seq 1 50); do
-  grep -q "running on port" /tmp/api.log 2>/dev/null && LISTENING=1 && break
-  sleep 0.1
-done
-if [ "$LISTENING" -eq 0 ]; then
-  echo "FATAL: API process did not emit listening signal within 5s"
-  echo "--- api.log ---"
-  cat /tmp/api.log
+# HARD GUARANTEE 2: process must emit startup signal within TIMEOUT_START seconds
+if ! timeout "$TIMEOUT_START" bash -c \
+    'until grep -q "$1" "$2" 2>/dev/null; do sleep 0.1; done' \
+    -- "$STARTUP_SIGNAL" "$LOG_FILE"; then
+  echo "FATAL: API process did not emit '$STARTUP_SIGNAL' within ${TIMEOUT_START}s"
+  echo "--- $LOG_FILE ---"
+  cat "$LOG_FILE"
   kill "$API_PID" 2>/dev/null || true
   exit 1
 fi
 
-# HARD GUARANTEE 3: health endpoint must respond within timeout
-READY=0
-for i in $(seq 1 20); do
-  curl -s "$BASE/state" >/dev/null 2>&1 && READY=1 && break
-  sleep 0.3
-done
-
-if [ "$READY" -eq 0 ] || ! kill -0 "$API_PID" 2>/dev/null; then
-  echo "FATAL: API health endpoint unreachable after process start (port=$PORT, pid=$API_PID)"
-  echo "--- api.log ---"
-  cat /tmp/api.log
+# HARD GUARANTEE 3: health endpoint must respond within TIMEOUT_HEALTH seconds
+if ! timeout "$TIMEOUT_HEALTH" bash -c \
+    'until curl -sf "http://localhost:$1$2" >/dev/null 2>&1; do sleep 0.3; done' \
+    -- "$PORT" "$HEALTH_ENDPOINT" \
+    || ! kill -0 "$API_PID" 2>/dev/null; then
+  echo "FATAL: health endpoint $BASE$HEALTH_ENDPOINT unreachable within ${TIMEOUT_HEALTH}s (pid=$API_PID)"
+  echo "--- $LOG_FILE ---"
+  cat "$LOG_FILE"
   kill "$API_PID" 2>/dev/null || true
   exit 1
 fi
