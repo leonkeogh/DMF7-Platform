@@ -5,6 +5,7 @@ const daemon = require('../daemon/daemon');
 const { router: engineRouter, control: engineControl } = require('../engine/engine');
 const metrics = require('../metrics/metrics');
 const rateLimiter = require('../middleware/rateLimiter');
+require('../control/controlLoop'); // side-effect: starts autonomous control loop
 
 const app = express();
 app.use(express.json());
