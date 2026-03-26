@@ -2,6 +2,7 @@
 
 const http = require('http');
 
+const WORKER_ID = process.env.WORKER_ID || 'node-local';
 const API_HOST = process.env.API_HOST || 'localhost';
 const API_PORT = process.env.API_PORT || 5000;
 const POLL_INTERVAL_MS = 1000;
@@ -73,6 +74,8 @@ async function tick() {
       return;
     }
 
+    console.log('assigned', WORKER_ID, task.id);
+
     // 2. Execute — bounded, synchronous stub
     let output;
     try {
@@ -87,11 +90,11 @@ async function tick() {
     let validate;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        validate = await request('POST', '/engine/validate', { task_id: task.id, output });
+        validate = await request('POST', '/engine/validate', { task_id: task.id, output, worker_id: WORKER_ID });
         break;
       } catch (err) {
         if (attempt === 2) throw err; // re-throw on second failure — caught by outer try
-        console.warn(`validate attempt ${attempt} failed for task ${task.id}: ${err.message} — retrying`);
+        console.log('retry', WORKER_ID, task.id);
         await new Promise((r) => setTimeout(r, 500));
       }
     }
@@ -107,7 +110,7 @@ async function tick() {
     }
 
     const result = validate.body && validate.body.result ? validate.body.result : 'unknown';
-    console.log(`task ${task.id} → ${result}`);
+    console.log('validated', WORKER_ID, task.id, result);
   } catch (err) {
     console.error('tick error:', err.message);
   } finally {
