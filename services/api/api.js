@@ -3,6 +3,7 @@
 const express = require('express');
 const daemon = require('../daemon/daemon');
 const { router: engineRouter, control: engineControl } = require('../engine/engine');
+const metrics = require('../metrics/metrics');
 
 const app = express();
 app.use(express.json());
@@ -21,6 +22,10 @@ function auth(req, res, next) {
 }
 
 // Public — no auth required
+app.get('/metrics', (req, res) => {
+  res.json(metrics.getMetrics());
+});
+
 app.get('/state', (req, res) => {
   res.json({
     status: 'ok',
