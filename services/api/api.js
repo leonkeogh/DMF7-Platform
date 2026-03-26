@@ -1,7 +1,6 @@
 'use strict';
 
 const express = require('express');
-const os = require('os');
 const daemon = require('../daemon/daemon');
 const engineRouter = require('../engine/engine');
 
@@ -10,6 +9,8 @@ app.use(express.json());
 app.use(engineRouter);
 
 const startTime = Date.now();
+
+const CONTROL_COMMANDS = new Set(['pause', 'resume', 'reload', 'shutdown']);
 
 app.get('/state', (req, res) => {
   res.json({
@@ -21,12 +22,39 @@ app.get('/state', (req, res) => {
 });
 
 app.post('/control', (req, res) => {
-  res.json({ status: 'ok' });
+  const { command } = req.body || {};
+  if (!command || typeof command !== 'string') {
+    return res.status(400).json({ error: 'command required' });
+  }
+  if (!CONTROL_COMMANDS.has(command)) {
+    return res.status(400).json({ error: `unknown command, valid: ${[...CONTROL_COMMANDS].join(', ')}` });
+  }
+  if (command === 'shutdown') {
+    res.json({ status: 'ok', command });
+    setImmediate(shutdown);
+    return;
+  }
+  res.json({ status: 'ok', command });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'internal server error' });
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`DMF7 API running on port ${PORT}`);
 });
+
+function shutdown() {
+  server.close(() => {
+    clearInterval(daemon._interval);
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 module.exports = app;

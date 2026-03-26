@@ -20,7 +20,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Verify node version
         run: node --version
@@ -29,6 +29,8 @@ jobs:
         run: |
           node services/api/api.js &
           API_PID=$!
-          sleep 2
-          curl -sf http://localhost:5000/state | grep '"status":"ok"'
+          for i in $(seq 1 10); do
+            curl -sf http://localhost:5000/state | grep '"status":"ok"' && break
+            sleep 1
+          done
           kill $API_PID
