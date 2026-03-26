@@ -1,77 +1,88 @@
 'use strict';
 
 const express = require('express');
+const db = require('../data/db');
 
 const router = express.Router();
-const queue = [];
-let taskIdCounter = 1;
 
 const QUEUE_MAX = 1000;
 const TASK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Control state — mutated by api.js via exported ref
-const control = { paused: false };
+// Control state — loaded from DB on startup, kept in sync on every mutation
+const control = {
+  get paused() {
+    return db.prepare("SELECT value FROM control_state WHERE key = 'paused'").get().value === 'true';
+  },
+  set paused(val) {
+    db.prepare("UPDATE control_state SET value = ? WHERE key = 'paused'").run(val ? 'true' : 'false');
+  },
+};
 
 function evict() {
   const cutoff = Date.now() - TASK_TTL_MS;
-  for (let i = queue.length - 1; i >= 0; i--) {
-    const t = queue[i];
-    if ((t.status === 'success' || t.status === 'failed') && t.completedAt < cutoff) {
-      queue.splice(i, 1);
-    }
-  }
+  db.prepare(
+    "DELETE FROM tasks WHERE status IN ('success', 'failed') AND completed_at < ?"
+  ).run(cutoff);
 }
+
+// Atomic assign: SELECT + UPDATE in a single transaction — safe within one process,
+// and WAL mode makes this durable to crash mid-assign
+const assignTask = db.transaction(() => {
+  const task = db.prepare(
+    "SELECT * FROM tasks WHERE status = 'queued' ORDER BY id LIMIT 1"
+  ).get();
+  if (!task) return null;
+  const now = Date.now();
+  db.prepare(
+    "UPDATE tasks SET status = 'assigned', assigned_at = ? WHERE id = ?"
+  ).run(now, task.id);
+  return { ...task, status: 'assigned', assignedAt: now };
+});
 
 router.post('/engine/submit', (req, res) => {
   evict();
-  if (queue.length >= QUEUE_MAX) {
+  const count = db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE status IN ('queued', 'assigned')").get().n;
+  if (count >= QUEUE_MAX) {
     return res.status(429).json({ error: 'queue full' });
   }
   const { payload, expected_output } = req.body || {};
   if (payload === undefined) {
     return res.status(400).json({ error: 'payload required' });
   }
-  const task = {
-    id: taskIdCounter++,
-    payload,
-    expected_output,
-    status: 'queued',
-    createdAt: Date.now(),
-  };
-  queue.push(task);
-  res.json({ status: 'ok', task_id: task.id });
+  const now = Date.now();
+  const result = db.prepare(
+    "INSERT INTO tasks (payload, expected_output, status, created_at) VALUES (?, ?, 'queued', ?)"
+  ).run(String(payload), expected_output !== undefined ? String(expected_output) : null, now);
+  res.json({ status: 'ok', task_id: result.lastInsertRowid });
 });
 
 router.get('/engine/assign', (req, res) => {
   if (control.paused) {
     return res.status(503).json({ status: 'paused' });
   }
-  const task = queue.find((t) => t.status === 'queued');
+  const task = assignTask();
   if (!task) {
     return res.json({ status: 'empty' });
   }
-  // Single-threaded: find→mutate is atomic within one Node.js process
-  task.status = 'assigned';
-  task.assignedAt = Date.now();
   res.json({ status: 'ok', task });
 });
 
 router.post('/engine/validate', (req, res) => {
   const { task_id, output } = req.body || {};
-  // Strict numeric string check — parseInt("1abc") returns 1 and would match, so reject non-pure-numeric input
   if (task_id === undefined || task_id === null || !/^\d+$/.test(String(task_id))) {
     return res.status(400).json({ error: 'task_id must be a positive integer' });
   }
   const id = parseInt(task_id, 10);
-  const task = queue.find((t) => t.id === id);
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
   if (!task) {
     return res.status(404).json({ error: 'task not found' });
   }
-  const success = output === task.expected_output;
-  task.status = success ? 'success' : 'failed';
-  task.completedAt = Date.now();
-  task.output = output;
-  res.json({ status: 'ok', result: task.status });
+  const success = String(output) === task.expected_output;
+  const status = success ? 'success' : 'failed';
+  db.prepare(
+    'UPDATE tasks SET status = ?, output = ?, completed_at = ? WHERE id = ?'
+  ).run(status, output !== undefined ? String(output) : null, Date.now(), id);
+  res.json({ status: 'ok', result: status });
 });
 
 module.exports = { router, control };
