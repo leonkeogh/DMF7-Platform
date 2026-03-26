@@ -72,16 +72,25 @@ router.post('/engine/validate', (req, res) => {
   if (task_id === undefined || task_id === null || !/^\d+$/.test(String(task_id))) {
     return res.status(400).json({ error: 'task_id must be a positive integer' });
   }
+  // output must be present — String(undefined) !== null, causing a comparison/storage split
+  if (output === undefined) {
+    return res.status(400).json({ error: 'output required' });
+  }
   const id = parseInt(task_id, 10);
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
   if (!task) {
     return res.status(404).json({ error: 'task not found' });
   }
-  const success = String(output) === task.expected_output;
+  // Only assigned tasks may be validated — prevents completing a task that was never processed
+  if (task.status !== 'assigned') {
+    return res.status(409).json({ error: `task is ${task.status}, only assigned tasks can be validated` });
+  }
+  const outputStr = String(output);
+  const success = outputStr === task.expected_output;
   const status = success ? 'success' : 'failed';
   db.prepare(
     'UPDATE tasks SET status = ?, output = ?, completed_at = ? WHERE id = ?'
-  ).run(status, output !== undefined ? String(output) : null, Date.now(), id);
+  ).run(status, outputStr, Date.now(), id);
   res.json({ status: 'ok', result: status });
 });
 
