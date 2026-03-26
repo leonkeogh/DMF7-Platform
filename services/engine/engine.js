@@ -39,7 +39,7 @@ const assignTask = db.transaction(() => {
   return { ...task, status: 'assigned', assignedAt: now };
 });
 
-router.post('/engine/submit', (req, res) => {
+router.post('/submit', (req, res) => {
   evict();
   const count = db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE status IN ('queued', 'assigned')").get().n;
   if (count >= QUEUE_MAX) {
@@ -56,7 +56,7 @@ router.post('/engine/submit', (req, res) => {
   res.json({ status: 'ok', task_id: result.lastInsertRowid });
 });
 
-router.get('/engine/assign', (req, res) => {
+router.get('/assign', (req, res) => {
   if (control.paused) {
     return res.status(503).json({ status: 'paused' });
   }
@@ -67,7 +67,7 @@ router.get('/engine/assign', (req, res) => {
   res.json({ status: 'ok', task });
 });
 
-router.post('/engine/validate', (req, res) => {
+router.post('/validate', (req, res) => {
   const { task_id, output } = req.body || {};
   if (task_id === undefined || task_id === null || !/^\d+$/.test(String(task_id))) {
     return res.status(400).json({ error: 'task_id must be a positive integer' });

@@ -5,6 +5,7 @@ const http = require('http');
 const WORKER_ID = process.env.WORKER_ID || 'node-local';
 const API_HOST = process.env.API_HOST || 'localhost';
 const API_PORT = process.env.API_PORT || 5000;
+const API_KEY = process.env.DMF7_API_KEY || 'dev-key';
 const POLL_INTERVAL_MS = 1000;
 const EXEC_TIMEOUT_MS = 5000;
 
@@ -19,7 +20,7 @@ function request(method, path, body) {
       port: API_PORT,
       path,
       method,
-      headers: { 'Content-Type': 'application/json', ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}) },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}) },
     };
     const req = http.request(options, (res) => {
       let data = '';

@@ -6,12 +6,21 @@ const { router: engineRouter, control: engineControl } = require('../engine/engi
 
 const app = express();
 app.use(express.json());
-app.use(engineRouter);
 
 const startTime = Date.now();
 
+const API_KEY = process.env.DMF7_API_KEY || 'dev-key';
 const CONTROL_COMMANDS = new Set(['pause', 'resume', 'reload', 'shutdown']);
 
+function auth(req, res, next) {
+  const key = req.headers['x-api-key'];
+  if (!key || key !== API_KEY) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  next();
+}
+
+// Public — no auth required
 app.get('/state', (req, res) => {
   res.json({
     status: 'ok',
@@ -21,7 +30,8 @@ app.get('/state', (req, res) => {
   });
 });
 
-app.post('/control', (req, res) => {
+// Protected — auth required
+app.post('/control', auth, (req, res) => {
   const { command } = req.body || {};
   if (!command || typeof command !== 'string') {
     return res.status(400).json({ error: 'command required' });
@@ -38,7 +48,6 @@ app.post('/control', (req, res) => {
     return res.json({ status: 'ok', command, engine: 'running' });
   }
   if (command === 'reload') {
-    // Re-trigger daemon collection to refresh metrics immediately
     daemon.updatedAt = 0;
     return res.json({ status: 'ok', command });
   }
@@ -48,6 +57,9 @@ app.post('/control', (req, res) => {
     return;
   }
 });
+
+// Protected — all /engine/* routes require auth
+app.use('/engine', auth, engineRouter);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
