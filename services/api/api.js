@@ -37,6 +37,21 @@ app.get('/state', (req, res) => {
   });
 });
 
+app.post('/validate', (req, res) => {
+  const m = metrics.getMetrics();
+  const paused = engineControl.paused;
+  const status = paused ? 'DEGRADED' : 'VALID';
+  res.json({
+    status,
+    service: 'api',
+    uptime: Math.floor((Date.now() - startTime) / 1000),
+    load: daemon.load,
+    paused,
+    tasks_completed: m.tasks_completed,
+    tasks_failed: m.tasks_failed,
+  });
+});
+
 // Protected — auth required
 app.post('/control', auth, rateLimiter, (req, res) => {
   const { command } = req.body || {};
