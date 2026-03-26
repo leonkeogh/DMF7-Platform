@@ -9,6 +9,9 @@ let taskIdCounter = 1;
 const QUEUE_MAX = 1000;
 const TASK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Control state — mutated by api.js via exported ref
+const control = { paused: false };
+
 function evict() {
   const cutoff = Date.now() - TASK_TTL_MS;
   for (let i = queue.length - 1; i >= 0; i--) {
@@ -40,11 +43,14 @@ router.post('/engine/submit', (req, res) => {
 });
 
 router.get('/engine/assign', (req, res) => {
+  if (control.paused) {
+    return res.status(503).json({ status: 'paused' });
+  }
   const task = queue.find((t) => t.status === 'queued');
   if (!task) {
     return res.json({ status: 'empty' });
   }
-  // Mark assigned before responding to prevent duplicate assignment under concurrency
+  // Single-threaded: find→mutate is atomic within one Node.js process
   task.status = 'assigned';
   task.assignedAt = Date.now();
   res.json({ status: 'ok', task });
@@ -52,11 +58,11 @@ router.get('/engine/assign', (req, res) => {
 
 router.post('/engine/validate', (req, res) => {
   const { task_id, output } = req.body || {};
-  // Coerce to integer — request bodies may send task_id as string
-  const id = parseInt(task_id, 10);
-  if (isNaN(id)) {
-    return res.status(400).json({ error: 'task_id must be a number' });
+  // Strict numeric string check — parseInt("1abc") returns 1 and would match, so reject non-pure-numeric input
+  if (task_id === undefined || task_id === null || !/^\d+$/.test(String(task_id))) {
+    return res.status(400).json({ error: 'task_id must be a positive integer' });
   }
+  const id = parseInt(task_id, 10);
   const task = queue.find((t) => t.id === id);
   if (!task) {
     return res.status(404).json({ error: 'task not found' });
@@ -68,4 +74,4 @@ router.post('/engine/validate', (req, res) => {
   res.json({ status: 'ok', result: task.status });
 });
 
-module.exports = router;
+module.exports = { router, control };

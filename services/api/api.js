@@ -2,7 +2,7 @@
 
 const express = require('express');
 const daemon = require('../daemon/daemon');
-const engineRouter = require('../engine/engine');
+const { router: engineRouter, control: engineControl } = require('../engine/engine');
 
 const app = express();
 app.use(express.json());
@@ -29,12 +29,24 @@ app.post('/control', (req, res) => {
   if (!CONTROL_COMMANDS.has(command)) {
     return res.status(400).json({ error: `unknown command, valid: ${[...CONTROL_COMMANDS].join(', ')}` });
   }
+  if (command === 'pause') {
+    engineControl.paused = true;
+    return res.json({ status: 'ok', command, engine: 'paused' });
+  }
+  if (command === 'resume') {
+    engineControl.paused = false;
+    return res.json({ status: 'ok', command, engine: 'running' });
+  }
+  if (command === 'reload') {
+    // Re-trigger daemon collection to refresh metrics immediately
+    daemon.updatedAt = 0;
+    return res.json({ status: 'ok', command });
+  }
   if (command === 'shutdown') {
     res.json({ status: 'ok', command });
     setImmediate(shutdown);
     return;
   }
-  res.json({ status: 'ok', command });
 });
 
 app.use((err, req, res, next) => {
