@@ -30,10 +30,32 @@ pkill -9 -f "api\.js"    2>/dev/null || true
 pkill -9 -f "worker\.js" 2>/dev/null || true
 sleep 2
 
+# HARD GUARANTEE 1: port must be free before we start
+if lsof -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+  echo "FATAL: port $PORT already in use — aborting"
+  lsof -iTCP:"$PORT" -sTCP:LISTEN
+  exit 1
+fi
+
 rm -f data/engine.db data/engine.db-shm data/engine.db-wal
 DMF7_API_KEY="$API_KEY" node services/api/api.js >/tmp/api.log 2>&1 &
 API_PID=$!
 
+# HARD GUARANTEE 2: process must emit "running on port" within 5s
+LISTENING=0
+for i in $(seq 1 50); do
+  grep -q "running on port" /tmp/api.log 2>/dev/null && LISTENING=1 && break
+  sleep 0.1
+done
+if [ "$LISTENING" -eq 0 ]; then
+  echo "FATAL: API process did not emit listening signal within 5s"
+  echo "--- api.log ---"
+  cat /tmp/api.log
+  kill "$API_PID" 2>/dev/null || true
+  exit 1
+fi
+
+# HARD GUARANTEE 3: health endpoint must respond within timeout
 READY=0
 for i in $(seq 1 20); do
   curl -s "$BASE/state" >/dev/null 2>&1 && READY=1 && break
@@ -41,8 +63,10 @@ for i in $(seq 1 20); do
 done
 
 if [ "$READY" -eq 0 ] || ! kill -0 "$API_PID" 2>/dev/null; then
-  echo "FATAL: API failed to start"
+  echo "FATAL: API health endpoint unreachable after process start (port=$PORT, pid=$API_PID)"
+  echo "--- api.log ---"
   cat /tmp/api.log
+  kill "$API_PID" 2>/dev/null || true
   exit 1
 fi
 echo "  API up (pid $API_PID)"
