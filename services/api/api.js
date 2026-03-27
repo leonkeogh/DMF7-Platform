@@ -8,8 +8,11 @@ const metrics = require('../metrics/metrics');
 const rateLimiter = require('../middleware/rateLimiter');
 require('../control/controlLoop'); // side-effect: starts autonomous control loop
 
+const path = require('path');
+
 const app = express();
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '../../public')));
 
 const startTime = Date.now();
 
