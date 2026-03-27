@@ -27,6 +27,8 @@
       --accent: #6366f1;
       --accent-dim: #4f52c9;
       --green: #22c55e;
+      --yellow: #eab308;
+      --blue: #38bdf8;
       --text: #e2e2f0;
       --muted: #8888aa;
       --radius: 8px;
@@ -171,8 +173,14 @@
     .result-row:last-child { margin-bottom: 0; }
     .result-key { color: var(--muted); min-width: 90px; }
     .result-val { color: var(--text); }
-    .result-val.ok { color: var(--green); }
-    .result-val.err { color: #f87171; }
+    .result-val.ok      { color: var(--green); }
+    .result-val.err     { color: #f87171; }
+    .result-val.queued  { color: var(--yellow); }
+    .result-val.assigned{ color: var(--blue); }
+    .result-val.done    { color: var(--green); }
+    .result-val.failed  { color: #f87171; }
+    .progress-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 1rem; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0; border-radius: 2px; transition: width .4s ease, background .4s; }
 
     /* CTA BOTTOM */
     .cta-bottom { text-align: center; padding: 5rem 1.5rem; max-width: 600px; margin: 0 auto; }
@@ -355,6 +363,7 @@
       <div class="result-row"><span class="result-key">task_id</span><span class="result-val" id="resId">—</span></div>
       <div class="result-row"><span class="result-key">status</span><span class="result-val" id="resStatus">—</span></div>
       <div class="result-row"><span class="result-key">message</span><span class="result-val" id="resMsg">—</span></div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
     </div>
   </div>
 </section>
@@ -370,6 +379,7 @@
 </footer>
 
 <script>
+  // ── system status panel ────────────────────────────────────────────────────
   function fmtUptime(s) {
     if (s < 60) return s + 's';
     if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
@@ -397,6 +407,7 @@
       });
   }
 
+  // ── copy button ────────────────────────────────────────────────────────────
   function copyCode(btn) {
     const pre = btn.closest('.api-card').querySelector('pre');
     navigator.clipboard.writeText(pre.innerText).then(() => {
@@ -405,44 +416,98 @@
     });
   }
 
+  // ── task lifecycle tracker ─────────────────────────────────────────────────
+  let taskPollTimer = null;
+
+  function setTaskState(phase, taskId) {
+    const result = document.getElementById('taskResult');
+    const fill   = document.getElementById('progressFill');
+    const phases = {
+      queued:   { label: 'queued',     cls: 'queued',  msg: 'Waiting for a worker to pick up the task…',  pct: 25,  bg: '#eab308' },
+      assigned: { label: 'processing', cls: 'assigned',msg: 'Worker assigned — executing task…',          pct: 60,  bg: '#38bdf8' },
+      success:  { label: 'success',    cls: 'done',    msg: 'Task completed successfully.',               pct: 100, bg: '#22c55e' },
+      failed:   { label: 'failed',     cls: 'failed',  msg: 'Task failed (retry may be in progress).',   pct: 100, bg: '#f87171' },
+      error:    { label: 'error',      cls: 'err',     msg: 'Submission error.',                         pct: 0,   bg: '#f87171' },
+    };
+    const p = phases[phase] || phases.queued;
+    result.className = 'task-result visible' + (phase === 'success' ? ' success' : phase === 'failed' || phase === 'error' ? ' error' : '');
+    if (taskId) document.getElementById('resId').textContent = taskId;
+    document.getElementById('resStatus').textContent = p.label;
+    document.getElementById('resStatus').className   = 'result-val ' + p.cls;
+    document.getElementById('resMsg').textContent    = p.msg;
+    fill.style.width      = p.pct + '%';
+    fill.style.background = p.bg;
+  }
+
+  function startTaskPoll(taskId, baselineTotal) {
+    // Poll /metrics every 2s and detect when tasks_completed or tasks_failed increments
+    let ticks = 0;
+    taskPollTimer = setInterval(() => {
+      ticks++;
+      if (ticks === 1) setTaskState('assigned', taskId); // optimistic processing state at 2s
+      fetch('/metrics')
+        .then(r => r.json())
+        .then(m => {
+          const newTotal = (m.tasks_completed || 0) + (m.tasks_failed || 0);
+          if (newTotal > baselineTotal) {
+            clearInterval(taskPollTimer);
+            // Determine outcome: if completed went up it's success, else failed
+            const wasFailed = (m.tasks_failed || 0) > (baselineTotal - (m.tasks_completed || 0));
+            setTaskState(wasFailed ? 'failed' : 'success', taskId);
+          } else if (ticks >= 15) {
+            // 30s timeout — stop polling, leave in processing state
+            clearInterval(taskPollTimer);
+            document.getElementById('resMsg').textContent = 'No worker available — task remains queued.';
+          }
+        })
+        .catch(() => { /* metrics unreachable — keep polling */ });
+    }, 2000);
+  }
+
+  // ── task submission ────────────────────────────────────────────────────────
   function submitTask() {
     const payload  = document.getElementById('taskPayload').value.trim();
     const expected = document.getElementById('taskExpected').value.trim();
     const btn      = document.getElementById('submitBtn');
-    const result   = document.getElementById('taskResult');
 
-    if (!payload) {
-      document.getElementById('taskPayload').focus();
-      return;
-    }
+    if (!payload) { document.getElementById('taskPayload').focus(); return; }
+
+    if (taskPollTimer) { clearInterval(taskPollTimer); taskPollTimer = null; }
 
     btn.disabled = true;
     btn.textContent = 'Submitting…';
-    result.className = 'task-result';
+    document.getElementById('taskResult').className = 'task-result';
+    document.getElementById('progressFill').style.width = '0';
 
-    fetch('/engine/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
-      body: JSON.stringify({ payload, expected_output: expected || payload }),
-    })
-      .then(r => r.json().then(d => ({ ok: r.ok, status: r.status, data: d })))
-      .then(({ ok, data }) => {
-        result.className = 'task-result visible ' + (ok ? 'success' : 'error');
-        document.getElementById('resId').textContent     = data.task_id ?? '—';
-        document.getElementById('resStatus').textContent = ok ? 'queued' : 'error';
-        document.getElementById('resStatus').className   = 'result-val ' + (ok ? 'ok' : 'err');
-        document.getElementById('resMsg').textContent    = ok ? 'Task accepted — engine will assign and execute' : (data.error || 'Submission failed');
-      })
-      .catch(err => {
-        result.className = 'task-result visible error';
-        document.getElementById('resId').textContent     = '—';
-        document.getElementById('resStatus').textContent = 'error';
-        document.getElementById('resStatus').className   = 'result-val err';
-        document.getElementById('resMsg').textContent    = err.message;
-      })
-      .finally(() => {
-        btn.disabled = false;
-        btn.textContent = 'Submit Task';
+    // Snapshot metrics before submit to detect completion delta
+    fetch('/metrics')
+      .then(r => r.json())
+      .then(m => (m.tasks_completed || 0) + (m.tasks_failed || 0))
+      .catch(() => 0)
+      .then(baselineTotal => {
+        fetch('/engine/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
+          body: JSON.stringify({ payload, expected_output: expected || payload }),
+        })
+          .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+          .then(({ ok, data }) => {
+            if (!ok) {
+              setTaskState('error', null);
+              document.getElementById('resMsg').textContent = data.error || 'Submission failed';
+              return;
+            }
+            setTaskState('queued', data.task_id);
+            startTaskPoll(data.task_id, baselineTotal);
+          })
+          .catch(err => {
+            setTaskState('error', null);
+            document.getElementById('resMsg').textContent = err.message;
+          })
+          .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Submit Task';
+          });
       });
   }
 
