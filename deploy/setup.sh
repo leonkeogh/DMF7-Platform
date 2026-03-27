@@ -7,14 +7,16 @@ APP_DIR="${APP_DIR:-/home/ubuntu/DMF7-NextGen}"
 REPO_URL="${REPO_URL:-}"          # required: set via env or edit here
 SERVICE_NAME="${SERVICE_NAME:-dmf7}"
 PORT="${PORT:-5000}"
-DOMAIN="${DOMAIN:-_}"             # _ = catch-all; set to your domain
+PRIMARY_DOMAIN="${PRIMARY_DOMAIN:-}"        # e.g. daanamoneyfactory.com
+SECONDARY_DOMAINS="${SECONDARY_DOMAINS:-}"  # space-separated, optional
 # ─────────────────────────────────────────────────────────────────────────────
 
 log()  { echo "[setup] $*"; }
 fail() { echo "[setup] FAIL: $*" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || fail "must run as root (sudo bash deploy/setup.sh)"
-[ -n "$REPO_URL" ]    || fail "REPO_URL is not set — export REPO_URL=https://... before running"
+[ "$(id -u)" -eq 0 ]       || fail "must run as root (sudo bash deploy/setup.sh)"
+[ -n "$REPO_URL" ]         || fail "REPO_URL is not set — export REPO_URL=https://... before running"
+[ -n "$PRIMARY_DOMAIN" ]   || fail "PRIMARY_DOMAIN is not set — export PRIMARY_DOMAIN=yourdomain.com before running"
 
 # ── 1. system prep ────────────────────────────────────────────────────────────
 log "1/7 system prep"
@@ -89,18 +91,20 @@ systemctl is-active --quiet "$SERVICE_NAME" \
   || { journalctl -u "$SERVICE_NAME" --no-pager -n 20; fail "service failed to start"; }
 log "  $SERVICE_NAME is active"
 
-# ── 6. nginx ──────────────────────────────────────────────────────────────────
+# ── 6. nginx (multi-domain control layer) ────────────────────────────────────
 log "6/7 nginx"
 NGINX_CONF="/etc/nginx/sites-available/$SERVICE_NAME"
 
 if [ ! -f "$NGINX_CONF" ]; then
+  log "  creating nginx config (primary=$PRIMARY_DOMAIN)"
   cat > "$NGINX_CONF" <<EOF
+# Primary domain — proxied to API
 server {
     listen 80;
-    server_name $DOMAIN;
+    server_name ${PRIMARY_DOMAIN} www.${PRIMARY_DOMAIN};
 
     location / {
-        proxy_pass         http://localhost:$PORT;
+        proxy_pass         http://localhost:${PORT};
         proxy_http_version 1.1;
         proxy_set_header   Host              \$host;
         proxy_set_header   X-Real-IP         \$remote_addr;
@@ -108,18 +112,26 @@ server {
         proxy_set_header   X-Forwarded-Proto \$scheme;
     }
 }
+
+# Catch-all — any other domain pointing at this VPS → 301 to primary
+server {
+    listen 80 default_server;
+    server_name _;
+
+    return 301 http://${PRIMARY_DOMAIN}\$request_uri;
+}
 EOF
-  log "  created nginx config"
+  log "  nginx config created"
 else
   log "  nginx config already exists — not overwriting"
 fi
 
-SYMLINK="/etc/nginx/sites-enabled/$SERVICE_NAME"
-[ -L "$SYMLINK" ] || ln -s "$NGINX_CONF" "$SYMLINK"
+# Idempotent symlink
+ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/$SERVICE_NAME"
 
-# Remove default site if it's blocking port 80
-if [ -L /etc/nginx/sites-enabled/default ]; then
-  rm /etc/nginx/sites-enabled/default
+# Remove default site if present — it would conflict with default_server above
+if [ -f /etc/nginx/sites-enabled/default ] || [ -L /etc/nginx/sites-enabled/default ]; then
+  rm -f /etc/nginx/sites-enabled/default
   log "  removed default nginx site"
 fi
 
@@ -140,14 +152,17 @@ for i in $(seq 1 10); do
 done
 
 log ""
+VPS_IP=$(curl -sf https://checkip.amazonaws.com 2>/dev/null || hostname -I | awk '{print $1}')
 log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 log "DEPLOYMENT COMPLETE"
 log "  service : $SERVICE_NAME (systemd)"
 log "  port    : $PORT (internal)"
-log "  nginx   : http://$DOMAIN → localhost:$PORT"
+log "  primary : http://$PRIMARY_DOMAIN → localhost:$PORT"
+log "  catch-all: all other domains → 301 → http://$PRIMARY_DOMAIN"
 log ""
 log "Next steps:"
-log "  1. Point DNS A record → $(curl -sf https://checkip.amazonaws.com || hostname -I | awk '{print $1}')"
-log "  2. Install SSL: sudo certbot --nginx -d $DOMAIN"
-log "  3. Run health check: DMF7_API_KEY=... DMF7_SECRET=... bash scripts/health_check.sh"
+log "  1. Set DNS A record: $PRIMARY_DOMAIN → $VPS_IP"
+[ -n "$SECONDARY_DOMAINS" ] && log "  2. Set DNS A record for secondary domains → $VPS_IP (catch-all will redirect)"
+log "  3. Install SSL: sudo certbot --nginx -d $PRIMARY_DOMAIN -d www.$PRIMARY_DOMAIN"
+log "  4. Health check: DMF7_API_KEY=... DMF7_SECRET=... bash scripts/health_check.sh"
 log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
