@@ -50,3 +50,9 @@ jobs:
           # the signed /validate test always executes rather than skipping.
           DMF7_SECRET: ${{ secrets.DMF7_SECRET || 'ci-test-secret' }}
         run: bash scripts/validate.sh
+
+      - name: Contract test — API shape lock
+        env:
+          DMF7_API_KEY: dev-key
+          DMF7_SECRET: ${{ secrets.DMF7_SECRET || 'ci-test-secret' }}
+        run: bash scripts/contracts.sh
