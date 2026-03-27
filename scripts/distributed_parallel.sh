@@ -22,6 +22,16 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v openssl >/dev/null 2>&1; then
+  echo "FATAL: openssl is required but not installed"
+  exit 1
+fi
+
+if [ -z "${DMF7_SECRET:-}" ]; then
+  echo "FATAL: DMF7_SECRET is not set — cannot sign validation requests"
+  exit 1
+fi
+
 if [ ! -f "$REGISTRY" ]; then
   echo "FATAL: service registry not found: $REGISTRY"
   exit 1
@@ -35,24 +45,34 @@ rm -f "$TMP_DIR"/*.json "$TMP_DIR"/fail.*
 # file on failure so the parent can detect it after wait.
 validate_service() {
   local svc="$1"
-  local host port path url response status
+  local host port path url ts sig response status
 
   host=$(jq -r ".\"$svc\".host"          "$REGISTRY")
   port=$(jq -r ".\"$svc\".port"          "$REGISTRY")
   path=$(jq -r ".\"$svc\".validate_path" "$REGISTRY")
   url="http://${host}:${port}${path}"
 
-  response=$(timeout "$CALL_TIMEOUT" curl -s -X POST "$url" 2>/dev/null \
+  # Sign the request: HMAC_SHA256(SECRET, TIMESTAMP + SERVICE_NAME)
+  ts=$(date +%s%3N)
+  sig=$(printf '%s' "${ts}${svc}" \
+    | openssl dgst -sha256 -hmac "$DMF7_SECRET" 2>/dev/null \
+    | awk '{print $NF}')
+
+  response=$(timeout "$CALL_TIMEOUT" curl -s -X POST "$url" \
+    -H "X-DMF7-TIMESTAMP: $ts" \
+    -H "X-DMF7-SIGNATURE: $sig" \
+    2>/dev/null \
     || echo "{\"status\":\"FAIL\",\"reason\":\"TIMEOUT\",\"service\":\"$svc\"}")
 
   echo "$response" > "$TMP_DIR/${svc}.json"
 
-  status=$(echo "$response" | jq -r '.status' 2>/dev/null || echo "FAIL")
+  # Validate JSON and extract status — invalid JSON treated as FAIL
+  status=$(echo "$response" | jq -e -r '.status' 2>/dev/null) || status="INVALID_JSON"
 
   if [ "$status" = "VALID" ]; then
     echo "  OK:   $svc ($url)"
   else
-    echo "  FAIL: $svc ($url) — $response"
+    echo "  FAIL: $svc ($url) — status=$status — $response"
     touch "$TMP_DIR/fail.${svc}"
     exit 1
   fi

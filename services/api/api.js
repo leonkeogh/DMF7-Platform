@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const express = require('express');
 const daemon = require('../daemon/daemon');
 const { router: engineRouter, control: engineControl } = require('../engine/engine');
@@ -13,7 +14,27 @@ app.use(express.json());
 const startTime = Date.now();
 
 const API_KEY = process.env.DMF7_API_KEY || 'dev-key';
+const DMF7_SECRET = process.env.DMF7_SECRET || null;
 const CONTROL_COMMANDS = new Set(['pause', 'resume', 'reload', 'shutdown']);
+
+// HMAC-SHA256 request verification for /validate
+// Rejects if DMF7_SECRET is unset, timestamp is outside ±10s, or signature wrong.
+function verifyValidateRequest(req, serviceName) {
+  if (!DMF7_SECRET) return false; // no secret configured — deny all
+  const ts = req.headers['x-dmf7-timestamp'];
+  const sig = req.headers['x-dmf7-signature'];
+  if (!ts || !sig) return false;
+  if (Math.abs(Date.now() - parseInt(ts, 10)) > 10000) return false;
+  const expected = crypto.createHmac('sha256', DMF7_SECRET)
+    .update(ts + serviceName)
+    .digest('hex');
+  // Constant-time comparison prevents timing attacks
+  try {
+    return crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
+  } catch (_) {
+    return false; // malformed hex in sig header
+  }
+}
 
 function auth(req, res, next) {
   const key = req.headers['x-api-key'];
@@ -38,6 +59,9 @@ app.get('/state', (req, res) => {
 });
 
 app.post('/validate', (req, res) => {
+  if (!verifyValidateRequest(req, 'api')) {
+    return res.status(403).json({ status: 'FAIL', reason: 'UNAUTHORIZED' });
+  }
   const m = metrics.getMetrics();
   const paused = engineControl.paused;
   const status = paused ? 'DEGRADED' : 'VALID';
