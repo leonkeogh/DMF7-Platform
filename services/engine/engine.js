@@ -8,6 +8,32 @@ const router = express.Router();
 
 const QUEUE_MAX = 1000;
 const TASK_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const STALE_ASSIGN_MS = 30000;     // reap tasks assigned >30s ago
+const IDEMPOTENCY_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let lastAssignedWorker = null; // fairness: track last worker that got a task
+
+// Idempotency: if x-idempotency-key header is present, return cached response on duplicate
+function checkIdempotency(req, res) {
+  const key = req.headers['x-idempotency-key'];
+  if (!key) return false; // no key = no idempotency check
+  // Evict expired keys
+  db.prepare("DELETE FROM idempotency WHERE created_at < ?").run(Date.now() - IDEMPOTENCY_TTL_MS);
+  const row = db.prepare("SELECT response FROM idempotency WHERE key = ?").get(key);
+  if (row) {
+    const cached = JSON.parse(row.response);
+    res.status(cached._status || 200).json(cached.body);
+    return true;
+  }
+  return false;
+}
+
+function saveIdempotency(req, statusCode, body) {
+  const key = req.headers['x-idempotency-key'];
+  if (!key) return;
+  db.prepare(
+    "INSERT OR IGNORE INTO idempotency (key, response, created_at) VALUES (?, ?, ?)"
+  ).run(key, JSON.stringify({ _status: statusCode, body }), Date.now());
+}
 
 // Control state — loaded from DB on startup, kept in sync on every mutation
 const control = {
@@ -26,6 +52,18 @@ function evict() {
   ).run(cutoff);
 }
 
+// Stale task reaper: requeue tasks stuck in 'assigned' beyond timeout.
+// Piggybacked on assign — no background timer, triggered only on API activity.
+function reapStaleTasks() {
+  const cutoff = Date.now() - STALE_ASSIGN_MS;
+  const reaped = db.prepare(
+    "UPDATE tasks SET status = 'queued', assigned_at = NULL WHERE status = 'assigned' AND assigned_at < ?"
+  ).run(cutoff);
+  if (reaped.changes > 0) {
+    console.log(`[reaper] requeued ${reaped.changes} stale assigned task(s)`);
+  }
+}
+
 // Atomic assign: SELECT + UPDATE in a single transaction — safe within one process,
 // and WAL mode makes this durable to crash mid-assign
 const assignTask = db.transaction(() => {
@@ -41,6 +79,7 @@ const assignTask = db.transaction(() => {
 });
 
 router.post('/submit', (req, res) => {
+  if (checkIdempotency(req, res)) return;
   evict();
   const count = db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE status IN ('queued', 'assigned')").get().n;
   if (count >= QUEUE_MAX) {
@@ -55,7 +94,10 @@ router.post('/submit', (req, res) => {
     "INSERT INTO tasks (payload, expected_output, status, created_at) VALUES (?, ?, 'queued', ?)"
   ).run(String(payload), expected_output !== undefined ? String(expected_output) : null, now);
   metrics.inc('tasks_submitted');
-  res.json({ status: 'ok', task_id: result.lastInsertRowid });
+  const body = { status: 'ok', task_id: result.lastInsertRowid };
+  saveIdempotency(req, 200, body);
+  metrics.logEvent('submit', { task_id: result.lastInsertRowid });
+  res.json(body);
 });
 
 router.get('/assign', (req, res) => {
@@ -67,13 +109,25 @@ router.get('/assign', (req, res) => {
   if (metrics.isQuarantined(workerId)) {
     return res.status(403).json({ status: 'quarantined', worker_id: workerId });
   }
+  reapStaleTasks();
   try {
+    // Fairness: if same worker just got a task, yield once to let others claim work.
+    // Only yields if there are queued tasks (so single-worker setups don't starve).
+    if (workerId && workerId === lastAssignedWorker) {
+      const queued = db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE status = 'queued'").get().n;
+      if (queued > 0) {
+        lastAssignedWorker = null; // reset so next call goes through
+        return res.json({ status: 'empty' });
+      }
+    }
     const task = assignTask();
     if (!task) {
       metrics.inc('assign_failures');
       return res.json({ status: 'empty' });
     }
+    lastAssignedWorker = workerId || null;
     metrics.inc('tasks_assigned');
+    metrics.logEvent('assign', { task_id: task.id, worker_id: workerId || null });
     res.json({ status: 'ok', task });
   } catch (err) {
     metrics.inc('assign_failures');
@@ -119,15 +173,18 @@ router.post('/validate', (req, res) => {
   if (status === 'failed') {
     metrics.inc('tasks_failed');
     metrics.recordWorkerFailure(workerId);
+    metrics.logEvent('fail', { task_id: id, worker_id: workerId });
     // Auto-retry: requeue once if task has not already been retried
     if (task.retries < 1) {
       db.prepare(
         "UPDATE tasks SET status = 'queued', assigned_at = NULL, output = NULL, completed_at = NULL, retries = retries + 1 WHERE id = ?"
       ).run(id);
+      metrics.logEvent('retry', { task_id: id });
       return res.json({ status: 'ok', result: 'failed', retried: true });
     }
   } else {
     metrics.inc('tasks_completed');
+    metrics.logEvent('complete', { task_id: id, worker_id: workerId });
   }
   res.json({ status: 'ok', result: status });
 });

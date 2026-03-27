@@ -29,7 +29,28 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS worker_quarantine (
+    worker_id  TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS events (
+    id         INTEGER PRIMARY KEY,
+    type       TEXT    NOT NULL,
+    payload    TEXT,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS idempotency (
+    key        TEXT    PRIMARY KEY,
+    response   TEXT    NOT NULL,
+    created_at INTEGER NOT NULL
+  );
 `);
+
+// Cleanup expired quarantines on startup
+db.prepare("DELETE FROM worker_quarantine WHERE expires_at < ?").run(Date.now());
 
 // Recovery: any task left in 'assigned' on startup was interrupted — requeue it
 db.prepare("UPDATE tasks SET status = 'queued', assigned_at = NULL WHERE status = 'assigned'").run();

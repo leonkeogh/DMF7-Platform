@@ -24,6 +24,7 @@ function tick() {
       control.paused = true;
       lastAction = now;
       console.log(`[control-loop] EMERGENCY_PAUSE — failure rate ${(failureRate * 100).toFixed(1)}%`);
+      metrics.logEvent('pause', { reason: 'emergency', failureRate });
       return;
     }
 
@@ -31,6 +32,7 @@ function tick() {
       control.paused = true;
       lastAction = now;
       console.log(`[control-loop] AUTO_PAUSE — failure rate ${(failureRate * 100).toFixed(1)}%`);
+      metrics.logEvent('pause', { reason: 'auto', failureRate });
       return;
     }
 
@@ -38,6 +40,7 @@ function tick() {
       control.paused = false;
       lastAction = now;
       console.log(`[control-loop] AUTO_RESUME — failure rate ${(failureRate * 100).toFixed(1)}%`);
+      metrics.logEvent('resume', { reason: 'auto', failureRate });
     }
   } catch (err) {
     console.error('[control-loop] tick error:', err.message);
