@@ -141,6 +141,39 @@
     .hl-val    { color: #a8ff7b; }
     .hl-dim    { color: var(--muted); }
 
+    /* TASK RUNNER */
+    .task-form { display: flex; flex-direction: column; gap: 1rem; max-width: 560px; }
+    .form-row { display: flex; flex-direction: column; gap: .4rem; }
+    .form-row label { font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .form-row input {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); font-family: var(--mono); font-size: .9rem;
+      padding: .7rem 1rem; outline: none; transition: border-color .15s;
+    }
+    .form-row input:focus { border-color: var(--accent); }
+    .form-row input::placeholder { color: var(--muted); }
+    .btn-run {
+      background: var(--accent); color: #fff; border: none; cursor: pointer;
+      padding: .8rem 2rem; border-radius: var(--radius); font-size: .95rem; font-weight: 700;
+      align-self: flex-start; transition: background .15s, transform .1s;
+    }
+    .btn-run:hover:not(:disabled) { background: var(--accent-dim); transform: translateY(-1px); }
+    .btn-run:disabled { opacity: .5; cursor: not-allowed; }
+    .task-result {
+      margin-top: 1.5rem; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem 1.5rem; font-family: var(--mono); font-size: .875rem;
+      display: none;
+    }
+    .task-result.visible { display: block; }
+    .task-result.success { border-color: var(--green); }
+    .task-result.error   { border-color: #f87171; }
+    .result-row { display: flex; gap: .75rem; margin-bottom: .4rem; }
+    .result-row:last-child { margin-bottom: 0; }
+    .result-key { color: var(--muted); min-width: 90px; }
+    .result-val { color: var(--text); }
+    .result-val.ok { color: var(--green); }
+    .result-val.err { color: #f87171; }
+
     /* CTA BOTTOM */
     .cta-bottom { text-align: center; padding: 5rem 1.5rem; max-width: 600px; margin: 0 auto; }
     .cta-bottom h2 { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 800; margin-bottom: 1rem; }
@@ -305,10 +338,31 @@
   </div>
 </section>
 
+<section id="run">
+  <div class="section-label">Try It</div>
+  <h2>Run a task now</h2>
+  <div class="task-form">
+    <div class="form-row">
+      <label for="taskPayload">Payload</label>
+      <input id="taskPayload" type="text" placeholder="hello" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <label for="taskExpected">Expected output</label>
+      <input id="taskExpected" type="text" placeholder="hello" autocomplete="off">
+    </div>
+    <button class="btn-run" id="submitBtn" onclick="submitTask()">Submit Task</button>
+    <div class="task-result" id="taskResult">
+      <div class="result-row"><span class="result-key">task_id</span><span class="result-val" id="resId">—</span></div>
+      <div class="result-row"><span class="result-key">status</span><span class="result-val" id="resStatus">—</span></div>
+      <div class="result-row"><span class="result-key">message</span><span class="result-val" id="resMsg">—</span></div>
+    </div>
+  </div>
+</section>
+
 <div class="cta-bottom">
   <h2>Ready to run it?</h2>
   <p>Production-grade task orchestration. Start in minutes.</p>
-  <a href="#api" class="btn-primary">Start Using the API</a>
+  <a href="#run" class="btn-primary">Submit Your First Task</a>
 </div>
 
 <footer>
@@ -349,6 +403,47 @@
       btn.textContent = 'Copied!';
       setTimeout(() => btn.textContent = 'Copy', 1500);
     });
+  }
+
+  function submitTask() {
+    const payload  = document.getElementById('taskPayload').value.trim();
+    const expected = document.getElementById('taskExpected').value.trim();
+    const btn      = document.getElementById('submitBtn');
+    const result   = document.getElementById('taskResult');
+
+    if (!payload) {
+      document.getElementById('taskPayload').focus();
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+    result.className = 'task-result';
+
+    fetch('/engine/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
+      body: JSON.stringify({ payload, expected_output: expected || payload }),
+    })
+      .then(r => r.json().then(d => ({ ok: r.ok, status: r.status, data: d })))
+      .then(({ ok, data }) => {
+        result.className = 'task-result visible ' + (ok ? 'success' : 'error');
+        document.getElementById('resId').textContent     = data.task_id ?? '—';
+        document.getElementById('resStatus').textContent = ok ? 'queued' : 'error';
+        document.getElementById('resStatus').className   = 'result-val ' + (ok ? 'ok' : 'err');
+        document.getElementById('resMsg').textContent    = ok ? 'Task accepted — engine will assign and execute' : (data.error || 'Submission failed');
+      })
+      .catch(err => {
+        result.className = 'task-result visible error';
+        document.getElementById('resId').textContent     = '—';
+        document.getElementById('resStatus').textContent = 'error';
+        document.getElementById('resStatus').className   = 'result-val err';
+        document.getElementById('resMsg').textContent    = err.message;
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Submit Task';
+      });
   }
 
   poll();
