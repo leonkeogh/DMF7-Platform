@@ -61,11 +61,18 @@ case "$cmd" in
       -d '{"command":"resume"}' && echo ""
     ;;
 
-  check)
+  check|contracts)
     DMF7_API_KEY="$API_KEY" bash "$(dirname "$0")/health_check.sh"
     ;;
 
-  errors)
+  health)
+    echo "=== /state ==="
+    curl -sf "$BASE/state" && echo "" || echo "  UNREACHABLE"
+    echo "=== /health ==="
+    curl -sf "$BASE/health" && echo "" || echo "  UNREACHABLE"
+    ;;
+
+  errors|failures)
     # Show only error-level log lines from the service
     journalctl -u "$SERVICE" -n "${2:-100}" --no-pager \
       | grep -i "error\|fail\|fatal\|quarantine\|PAUSE\|EMERGENCY" || echo "  (no errors found)"
