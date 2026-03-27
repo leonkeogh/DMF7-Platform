@@ -4,4 +4,5 @@ logging:
   format: json
 metrics:
   enabled: true
-  port: 9090
+  port: 5000
+  path: /metrics

@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DMF7_API_KEY: dev-key
+      # REQUIRED: set DMF7_SECRET in GitHub repo Settings → Secrets → Actions
+      # Without it /validate returns 403 and orchestrator validation fails
       DMF7_SECRET: ${{ secrets.DMF7_SECRET }}
 
     steps:

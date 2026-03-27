@@ -75,6 +75,24 @@ echo "  API up (pid $API_PID)"
 
 # ── 1. AUTH ────────────────────────────────────────────────────────────────
 echo "=== 1. auth ==="
+# /validate HMAC security gate
+UNAUTH=$(curl -o /dev/null -s -w "%{http_code}" -X POST "$BASE/validate") || true
+[ "$UNAUTH" = "403" ] \
+  && ok "/validate unsigned → 403" \
+  || fail "/validate unsigned" "expected 403 got $UNAUTH"
+
+if [ -n "${DMF7_SECRET:-}" ]; then
+  VTS=$(date +%s%3N)
+  VSIG=$(printf '%s' "${VTS}api" | openssl dgst -sha256 -hmac "$DMF7_SECRET" | awk '{print $NF}')
+  AUTH_V=$(curl -o /dev/null -s -w "%{http_code}" -X POST "$BASE/validate" \
+    -H "X-DMF7-TIMESTAMP: $VTS" -H "X-DMF7-SIGNATURE: $VSIG") || true
+  [ "$AUTH_V" = "200" ] \
+    && ok "/validate signed → 200" \
+    || fail "/validate signed" "expected 200 got $AUTH_V"
+else
+  ok "/validate signed → skipped (DMF7_SECRET not set)"
+fi
+
 expect_code "engine/assign no key → 401"  "401" "$BASE/engine/assign"
 expect_code "engine/assign with key → 200" "200" -H "x-api-key: $API_KEY" "$BASE/engine/assign"
 expect_code "control no key → 401"         "401" -X POST "$BASE/control" \
