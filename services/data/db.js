@@ -21,7 +21,8 @@ db.exec(`
     output     TEXT,
     created_at  INTEGER NOT NULL,
     assigned_at INTEGER,
-    completed_at INTEGER
+    completed_at INTEGER,
+    retries     INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS control_state (

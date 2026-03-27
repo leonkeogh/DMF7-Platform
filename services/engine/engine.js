@@ -63,6 +63,10 @@ router.get('/assign', (req, res) => {
     // Paused is not a failure — do not increment assign_failures
     return res.status(503).json({ status: 'paused' });
   }
+  const workerId = req.headers['x-worker-id'];
+  if (metrics.isQuarantined(workerId)) {
+    return res.status(403).json({ status: 'quarantined', worker_id: workerId });
+  }
   try {
     const task = assignTask();
     if (!task) {
@@ -102,14 +106,29 @@ router.post('/validate', (req, res) => {
   const outputStr = String(output);
   const success = outputStr === task.expected_output;
   const status = success ? 'success' : 'failed';
+  const now = Date.now();
   const info = db.prepare(
     "UPDATE tasks SET status = ?, output = ?, completed_at = ? WHERE id = ? AND status = 'assigned'"
-  ).run(status, outputStr, Date.now(), id);
+  ).run(status, outputStr, now, id);
   if (info.changes !== 1) {
     metrics.inc('validate_failures');
     return res.status(500).json({ error: 'update did not apply' });
   }
-  metrics.inc(status === 'success' ? 'tasks_completed' : 'tasks_failed');
+  // Track worker failures for quarantine
+  const workerId = req.body.worker_id || req.headers['x-worker-id'] || null;
+  if (status === 'failed') {
+    metrics.inc('tasks_failed');
+    metrics.recordWorkerFailure(workerId);
+    // Auto-retry: requeue once if task has not already been retried
+    if (task.retries < 1) {
+      db.prepare(
+        "UPDATE tasks SET status = 'queued', assigned_at = NULL, output = NULL, completed_at = NULL, retries = retries + 1 WHERE id = ?"
+      ).run(id);
+      return res.json({ status: 'ok', result: 'failed', retried: true });
+    }
+  } else {
+    metrics.inc('tasks_completed');
+  }
   res.json({ status: 'ok', result: status });
 });
 

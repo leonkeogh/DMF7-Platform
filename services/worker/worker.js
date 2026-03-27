@@ -35,6 +35,7 @@ function request(method, path, body) {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': API_KEY,
+        'x-worker-id': WORKER_ID,
         ...signHeaders(),
         ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
       },

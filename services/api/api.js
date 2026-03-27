@@ -62,6 +62,17 @@ app.get('/state', (req, res) => {
   });
 });
 
+app.get('/health', (req, res) => {
+  const m = metrics.getMetrics();
+  const total = (m.tasks_completed + m.tasks_failed) || 1;
+  const failureRate = parseFloat((m.tasks_failed / total).toFixed(4));
+  res.json({
+    status: 'ok',
+    paused: engineControl.paused,
+    failureRate,
+  });
+});
+
 app.post('/validate', (req, res) => {
   if (!verifyValidateRequest(req, 'api')) {
     return res.status(403).json({ status: 'FAIL', reason: 'UNAUTHORIZED' });

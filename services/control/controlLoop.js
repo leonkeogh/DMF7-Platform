@@ -6,6 +6,7 @@ const { control } = require('../engine/engine');
 const INTERVAL_MS = 2000;
 const FAILURE_RATE_PAUSE_THRESHOLD = 0.3;  // pause when ≥30% of completions are failures
 const FAILURE_RATE_RESUME_THRESHOLD = 0.1; // resume when failure rate drops below 10%
+const FAILURE_RATE_EMERGENCY = 0.5;        // emergency pause — bypasses guard timer
 const ACTION_GUARD_MS = 5000;              // minimum ms between state transitions
 
 let lastAction = 0;
@@ -17,6 +18,14 @@ function tick() {
     const failureRate = m.tasks_failed / total;
     const now = Date.now();
     const paused = control.paused;
+
+    // Emergency cascade: >50% failure rate bypasses the 5s guard timer
+    if (!paused && failureRate >= FAILURE_RATE_EMERGENCY) {
+      control.paused = true;
+      lastAction = now;
+      console.log(`[control-loop] EMERGENCY_PAUSE — failure rate ${(failureRate * 100).toFixed(1)}%`);
+      return;
+    }
 
     if (!paused && failureRate >= FAILURE_RATE_PAUSE_THRESHOLD && now - lastAction > ACTION_GUARD_MS) {
       control.paused = true;
