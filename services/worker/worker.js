@@ -1,16 +1,28 @@
 'use strict';
 
 const http = require('http');
+const crypto = require('crypto');
 
 const WORKER_ID = process.env.WORKER_ID || 'node-local';
 const API_HOST = process.env.API_HOST || 'localhost';
 const API_PORT = process.env.API_PORT || 5000;
 const API_KEY = process.env.DMF7_API_KEY || 'dev-key';
+const DMF7_SECRET = process.env.DMF7_SECRET || null;
 const POLL_INTERVAL_MS = 1000;
 const EXEC_TIMEOUT_MS = 5000;
 
 let running = false; // prevents concurrent loop ticks
 let shuttingDown = false;
+
+// Sign outbound requests when DMF7_SECRET is present (no-op in dev mode).
+function signHeaders() {
+  if (!DMF7_SECRET) return {};
+  const ts = String(Date.now());
+  const sig = crypto.createHmac('sha256', DMF7_SECRET)
+    .update(ts + 'worker')
+    .digest('hex');
+  return { 'X-DMF7-TIMESTAMP': ts, 'X-DMF7-SIGNATURE': sig };
+}
 
 function request(method, path, body) {
   return new Promise((resolve, reject) => {
@@ -20,7 +32,12 @@ function request(method, path, body) {
       port: API_PORT,
       path,
       method,
-      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
+        ...signHeaders(),
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+      },
     };
     const req = http.request(options, (res) => {
       let data = '';

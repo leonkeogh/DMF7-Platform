@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DMF7_API_KEY: dev-key
+      DMF7_SECRET: ${{ secrets.DMF7_SECRET }}
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +28,7 @@ jobs:
       - name: Verify node version
         run: node --version
 
-      - name: Smoke test API starts
+      - name: Smoke test — API starts
         run: |
           node services/api/api.js &
           API_PID=$!
@@ -34,3 +37,8 @@ jobs:
             sleep 1
           done
           kill $API_PID
+
+      - name: Integration test — full harness
+        env:
+          DMF7_API_KEY: dev-key
+        run: bash scripts/validate.sh
