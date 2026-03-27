@@ -57,6 +57,7 @@ else
   cat > "$ENV_FILE" <<'EOF'
 DMF7_API_KEY=CHANGE_ME
 DMF7_SECRET=CHANGE_ME
+DMF7_ADMIN_KEY=CHANGE_ME
 PORT=5000
 EOF
   chown "$APP_USER:$APP_USER" "$ENV_FILE"
@@ -66,7 +67,7 @@ fi
 
 # Warn if placeholder values are still present
 if grep -q "CHANGE_ME" "$ENV_FILE"; then
-  fail ".env.production still has placeholder values — set real DMF7_API_KEY and DMF7_SECRET"
+  fail ".env.production still has placeholder values — set real DMF7_API_KEY, DMF7_SECRET, and DMF7_ADMIN_KEY"
 fi
 
 # ── 5. systemd ────────────────────────────────────────────────────────────────

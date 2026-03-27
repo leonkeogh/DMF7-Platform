@@ -6,6 +6,8 @@ const daemon = require('../daemon/daemon');
 const { router: engineRouter, control: engineControl } = require('../engine/engine');
 const metrics = require('../metrics/metrics');
 const rateLimiter = require('../middleware/rateLimiter');
+const apiKeyAuth = require('../middleware/apiKeyAuth');
+const adminRouter = require('../admin/admin');
 require('../control/controlLoop'); // side-effect: starts autonomous control loop
 
 const path = require('path');
@@ -94,6 +96,9 @@ app.post('/validate', (req, res) => {
   });
 });
 
+// Admin routes — require x-admin-key
+app.use('/admin', adminRouter);
+
 // Protected — auth required
 app.post('/control', auth, rateLimiter, (req, res) => {
   const { command } = req.body || {};
@@ -122,8 +127,8 @@ app.post('/control', auth, rateLimiter, (req, res) => {
   }
 });
 
-// Protected — all /engine/* routes require auth then rate limit
-app.use('/engine', auth, rateLimiter, engineRouter);
+// Protected — all /engine/* routes require valid API key (per-key rate limit inside apiKeyAuth)
+app.use('/engine', apiKeyAuth, engineRouter);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

@@ -47,6 +47,14 @@ db.exec(`
     response   TEXT    NOT NULL,
     created_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS api_keys (
+    key        TEXT    PRIMARY KEY,
+    name       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    rate_limit INTEGER NOT NULL DEFAULT 60,
+    active     INTEGER NOT NULL DEFAULT 1
+  );
 `);
 
 // Cleanup expired quarantines on startup

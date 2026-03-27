@@ -351,6 +351,10 @@
   <h2>Run a task now</h2>
   <div class="task-form">
     <div class="form-row">
+      <label for="apiKeyInput">API Key</label>
+      <input id="apiKeyInput" type="text" placeholder="dmf7_…" autocomplete="off" oninput="saveApiKey(this.value)">
+    </div>
+    <div class="form-row">
       <label for="taskPayload">Payload</label>
       <input id="taskPayload" type="text" placeholder="hello" autocomplete="off">
     </div>
@@ -379,6 +383,22 @@
 </footer>
 
 <script>
+  // ── api key persistence ────────────────────────────────────────────────────
+  function saveApiKey(val) {
+    if (val) localStorage.setItem('dmf7_api_key', val);
+    else localStorage.removeItem('dmf7_api_key');
+  }
+  function getApiKey() {
+    return document.getElementById('apiKeyInput').value.trim()
+        || localStorage.getItem('dmf7_api_key')
+        || '';
+  }
+  // Restore on load
+  window.addEventListener('DOMContentLoaded', () => {
+    const saved = localStorage.getItem('dmf7_api_key');
+    if (saved) document.getElementById('apiKeyInput').value = saved;
+  });
+
   // ── system status panel ────────────────────────────────────────────────────
   function fmtUptime(s) {
     if (s < 60) return s + 's';
@@ -469,8 +489,15 @@
     const payload  = document.getElementById('taskPayload').value.trim();
     const expected = document.getElementById('taskExpected').value.trim();
     const btn      = document.getElementById('submitBtn');
+    const apiKey   = getApiKey();
 
     if (!payload) { document.getElementById('taskPayload').focus(); return; }
+    if (!apiKey) {
+      document.getElementById('apiKeyInput').focus();
+      setTaskState('error', null);
+      document.getElementById('resMsg').textContent = 'Enter your API key above before submitting.';
+      return;
+    }
 
     if (taskPollTimer) { clearInterval(taskPollTimer); taskPollTimer = null; }
 
@@ -487,7 +514,7 @@
       .then(baselineTotal => {
         fetch('/engine/submit', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
           body: JSON.stringify({ payload, expected_output: expected || payload }),
         })
           .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
