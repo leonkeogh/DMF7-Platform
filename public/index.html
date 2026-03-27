@@ -4,6 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DMF7 — Task Orchestration Engine</title>
+  <meta name="description" content="DMF7 is a task orchestration engine that executes work reliably, tracks results, and scales with demand.">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://daanamoneyfactory.com">
+  <meta property="og:title" content="DMF7 — Automate Work. Generate Output. Scale Faster.">
+  <meta property="og:description" content="Task orchestration engine that executes work reliably, tracks results, and scales with demand.">
+  <meta property="og:image" content="https://daanamoneyfactory.com/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="DMF7 — Automate Work. Generate Output. Scale Faster.">
+  <meta name="twitter:description" content="Task orchestration engine that executes work reliably, tracks results, and scales with demand.">
+  <meta name="twitter:image" content="https://daanamoneyfactory.com/og-image.png">
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -122,7 +135,6 @@
     .step {
       background: var(--surface);
       padding: 2rem 1.5rem;
-      position: relative;
     }
     .step-num {
       font-size: .75rem;
@@ -131,11 +143,7 @@
       letter-spacing: .1em;
       margin-bottom: .75rem;
     }
-    .step h3 {
-      font-size: 1.05rem;
-      font-weight: 700;
-      margin-bottom: .5rem;
-    }
+    .step h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: .5rem; }
     .step p { font-size: .9rem; color: var(--muted); }
 
     /* FEATURES */
@@ -152,16 +160,54 @@
       transition: border-color .15s;
     }
     .feature:hover { border-color: var(--accent); }
-    .feature-icon {
-      font-size: 1.5rem;
+    .feature-icon { font-size: 1.5rem; margin-bottom: 1rem; }
+    .feature h3 { font-size: 1rem; font-weight: 700; margin-bottom: .4rem; }
+    .feature p { font-size: .875rem; color: var(--muted); }
+
+    /* TRUST */
+    .trust {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .trust-inner {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2rem;
+      justify-content: center;
+    }
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      font-size: .9rem;
+      font-weight: 600;
+    }
+    .trust-item::before {
+      content: "✓";
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    /* CTA BOTTOM */
+    .cta-bottom {
+      text-align: center;
+      padding: 5rem 1.5rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .cta-bottom h2 {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800;
       margin-bottom: 1rem;
     }
-    .feature h3 {
-      font-size: 1rem;
-      font-weight: 700;
-      margin-bottom: .4rem;
+    .cta-bottom p {
+      color: var(--muted);
+      margin-bottom: 2rem;
     }
-    .feature p { font-size: .875rem; color: var(--muted); }
 
     /* FOOTER */
     footer {
@@ -183,13 +229,23 @@
 
 <nav>
   <div class="logo">DMF<span>7</span></div>
-  <a href="http://daanamoneyfactory.com" class="btn-nav">Start Using the System</a>
+  <a href="https://daanamoneyfactory.com" class="btn-nav">Start Using the System</a>
 </nav>
 
 <div class="hero">
   <h1>Automate Work.<br><em>Generate Output.</em><br>Scale Faster.</h1>
   <p>DMF7 is a task orchestration engine that executes work reliably, tracks results, and scales with demand.</p>
-  <a href="http://daanamoneyfactory.com" class="btn-primary">Start Using the System</a>
+  <a href="https://daanamoneyfactory.com" class="btn-primary">Start Using the System</a>
+</div>
+
+<div class="trust">
+  <div class="trust-inner">
+    <div class="trust-item">Reliable task execution</div>
+    <div class="trust-item">Self-healing system</div>
+    <div class="trust-item">Production-grade orchestration</div>
+    <div class="trust-item">Zero task loss under failure</div>
+    <div class="trust-item">Atomic assignment guarantees</div>
+  </div>
 </div>
 
 <section>
@@ -245,6 +301,12 @@
     </div>
   </div>
 </section>
+
+<div class="cta-bottom">
+  <h2>Ready to run it?</h2>
+  <p>Production-grade task orchestration. Start in minutes.</p>
+  <a href="https://daanamoneyfactory.com" class="btn-primary">Start Using the System</a>
+</div>
 
 <footer>
   <strong>DMF7</strong> &mdash; Task Orchestration Engine &mdash; daanamoneyfactory.com
