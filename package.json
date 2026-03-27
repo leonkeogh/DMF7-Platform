@@ -5,6 +5,7 @@
   "main": "services/api/api.js",
   "scripts": {
     "start": "node services/api/api.js",
+    "start:prod": "NODE_ENV=production node services/api/api.js",
     "daemon": "node services/daemon/daemon.js"
   },
   "dependencies": {
