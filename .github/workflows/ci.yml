@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify native modules (better-sqlite3)
+        run: node -e "require('better-sqlite3')" || (echo "FATAL: better-sqlite3 native binding failed to load" && exit 1)
+
       - name: Verify node version
         run: node --version
 
