@@ -36,6 +36,10 @@ function verifyValidateRequest(req, serviceName) {
   }
 }
 
+// Two-tier auth model (intentional):
+//   /validate        → HMAC-SHA256 (X-DMF7-SIGNATURE) — orchestrator identity
+//   /engine/* /control → x-api-key — internal service calls (worker, operators)
+// Worker sends both headers; only /validate verifies the HMAC.
 function auth(req, res, next) {
   const key = req.headers['x-api-key'];
   if (!key || key !== API_KEY) {

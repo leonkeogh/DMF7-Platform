@@ -43,4 +43,7 @@ jobs:
       - name: Integration test — full harness
         env:
           DMF7_API_KEY: dev-key
+          # Use repo secret when available; fall back to a fixed CI test value so
+          # the signed /validate test always executes rather than skipping.
+          DMF7_SECRET: ${{ secrets.DMF7_SECRET || 'ci-test-secret' }}
         run: bash scripts/validate.sh
