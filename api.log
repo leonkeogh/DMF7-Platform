@@ -1,0 +1,3 @@
+nohup: ignoring input
+[control-loop] started — interval 2s, pause@30% fail, resume@10% fail
+DMF7 API running on port 5000
