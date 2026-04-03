@@ -1,0 +1,72 @@
+#!/bin/bash
+set -euo pipefail
+
+LOG=/tmp/dmf7_poll_merge.log
+REPO="leonkeogh/DMF7-Platform"
+# Optional overrides via env:
+TIMEOUT_SECS="${TIMEOUT_SECS:-900}"
+INTERVAL_SECS="${INTERVAL_SECS:-15}"
+PR_NUM="${PR_NUM:-}"    # if set externally, script will use it
+
+cd ~/DMF7-Platform || { echo "Monorepo not found at ~/DMF7-Platform" | tee -a "$LOG"; exit 2; }
+
+# Resolve PR number if not provided: pick the open chore/add-codeowners-agent* PR (the one we created)
+if [ -z "$PR_NUM" ]; then
+  PR_NUM=$(gh pr list --state open --json number,headRefName -q '.[] | select(.headRefName | test("chore/add-codeowners-agent")) | .number' | head -n1 || true)
+fi
+
+if [ -z "$PR_NUM" ]; then
+  echo "$(date -u) ERROR: Could not resolve PR number. List open PRs and set PR_NUM then re-run." | tee -a "$LOG"
+  gh pr list --state open --limit 10 --json number,title,headRefName -q '.[] | {number,title,head:.headRefName}' | tee -a "$LOG"
+  exit 3
+fi
+
+echo "$(date -u) Starting poll for PR#$PR_NUM (timeout=${TIMEOUT_SECS}s interval=${INTERVAL_SECS}s)" | tee -a "$LOG"
+
+START=$(date +%s)
+while true; do
+  MERGEABLE=$(gh pr view "$PR_NUM" --json mergeable -q .mergeable 2>/dev/null || echo "UNKNOWN")
+  echo "$(date -u) PR#$PR_NUM mergeable=$MERGEABLE" | tee -a "$LOG"
+
+  if [ "$MERGEABLE" = "MERGEABLE" ]; then
+    SHA=$(gh pr view "$PR_NUM" --json headRefOid -q .headRefOid 2>/dev/null || echo "")
+    if [ -n "$SHA" ] && [ "$SHA" != "null" ]; then
+      STATE=$(gh api -H "Accept: application/vnd.github+json" /repos/"${REPO}"/commits/"${SHA}"/status -q .state 2>/dev/null || echo "unknown")
+      echo "$(date -u) Commit $SHA status=$STATE" | tee -a "$LOG"
+      if [ "$STATE" = "success" ]; then
+        echo "$(date -u) All checks passing — attempting merge PR#$PR_NUM" | tee -a "$LOG"
+        if gh pr merge "$PR_NUM" --merge --delete-branch --repo "$REPO"; then
+          echo "$(date -u) PR#$PR_NUM merged successfully." | tee -a "$LOG"
+          exit 0
+        else
+          echo "$(date -u) ERROR: gh pr merge failed. Opening PR for manual review." | tee -a "$LOG"
+          gh pr view "$PR_NUM" --web || true
+          exit 2
+        fi
+      else
+        echo "$(date -u) Checks not passing (state=$STATE). Sleeping ${INTERVAL_SECS}s..." | tee -a "$LOG"
+      fi
+    else
+      echo "$(date -u) Head SHA not available yet. Sleeping ${INTERVAL_SECS}s..." | tee -a "$LOG"
+    fi
+
+  elif [ "$MERGEABLE" = "CONFLICTING" ]; then
+    echo "$(date -u) PR is conflicting and cannot be merged automatically. Opening PR for manual resolution." | tee -a "$LOG"
+    gh pr view "$PR_NUM" --web || true
+    exit 3
+
+  else
+    echo "$(date -u) Mergeable=$MERGEABLE (UNKNOWN/PENDING). Sleeping ${INTERVAL_SECS}s..." | tee -a "$LOG"
+  fi
+
+  NOW=$(date +%s)
+  if [ $((NOW-START)) -ge "$TIMEOUT_SECS" ]; then
+    echo "$(date -u) Timeout ($TIMEOUT_SECS s) reached. Opening PR for manual review." | tee -a "$LOG"
+    gh pr view "$PR_NUM" --web || true
+    exit 4
+  fi
+
+  sleep "$INTERVAL_SECS"
+done
+exec $SHELL
+read -n1 -s -r -p "Script finished. Press any key to close..."
