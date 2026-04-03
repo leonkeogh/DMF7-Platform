@@ -1,1 +1,0 @@
-# opportunity_discovery_engine microservice skeleton
