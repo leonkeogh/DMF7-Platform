@@ -1,0 +1,8 @@
+environment: development
+logging:
+  level: debug
+  format: json
+metrics:
+  enabled: true
+  port: 5000
+  path: /metrics

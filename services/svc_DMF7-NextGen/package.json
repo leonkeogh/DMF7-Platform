@@ -1,0 +1,18 @@
+{
+  "name": "dmf7-nextgen",
+  "version": "0.1.0",
+  "description": "DMF7-NextGen distributed plane architecture",
+  "main": "services/api/api.js",
+  "scripts": {
+    "start": "node services/api/api.js",
+    "start:prod": "NODE_ENV=production node services/api/api.js",
+    "daemon": "node services/daemon/daemon.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
