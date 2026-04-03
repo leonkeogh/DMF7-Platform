@@ -1,0 +1,5 @@
+/services/authority/    @team-authority
+/services/crypto_layer/ @team-security
+/services/copilot_agent/ @team-ai
+/services/*              @team-services
+/.github/               @team-platform
