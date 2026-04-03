@@ -1,8 +1,0 @@
-gateway:
-  enabled: true
-ingest:
-  enabled: true
-retrieval:
-  enabled: true
-operator-console:
-  enabled: true
