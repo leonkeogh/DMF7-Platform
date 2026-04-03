@@ -1,8 +1,7 @@
-# CODEOWNERS for DMF7-Platform — map to your user so reviews route to you.
-// Adjust the username below if you prefer a different owner:
+# CODEOWNERS for DMF7-Platform — initial ownership: map to your user
+# Adjust if you want org teams instead of the user handle.
 @leonkeogh
 
-# Per-path ownership
 /services/dmf7/            @leonkeogh
 /services/dmf7-nextgen/   @leonkeogh
 /services/nextjs-ai-chatbot/ @leonkeogh
