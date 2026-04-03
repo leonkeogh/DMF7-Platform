@@ -1,5 +1,10 @@
-/services/authority/    @team-authority
-/services/crypto_layer/ @team-security
-/services/copilot_agent/ @team-ai
-/services/*              @team-services
-/.github/               @team-platform
+# CODEOWNERS for DMF7-Platform — map to your user so reviews route to you.
+// Adjust the username below if you prefer a different owner:
+@leonkeogh
+
+# Per-path ownership
+/services/dmf7/            @leonkeogh
+/services/dmf7-nextgen/   @leonkeogh
+/services/nextjs-ai-chatbot/ @leonkeogh
+/services/scrollverse-map/ @leonkeogh
+/.github/                 @leonkeogh
